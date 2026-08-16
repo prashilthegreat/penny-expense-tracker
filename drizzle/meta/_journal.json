@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786842061240,
+      "tag": "0000_illegal_clint_barton",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786842074553,
+      "tag": "0001_steady_warpath",
+      "breakpoints": true
+    }
+  ]
+}
