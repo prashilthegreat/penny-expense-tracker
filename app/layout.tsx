@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,15 +12,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const incoming = await headers();
-  const host = incoming.get("host") || "localhost:3000";
-  const protocol = incoming.get("x-forwarded-proto") || (host.startsWith("localhost") ? "http" : "https");
-  const image = `${protocol}://${host}/og.png`;
+export const metadata: Metadata = (() => {
+  const image = "https://prashilkoirala.com.np/og.png";
   const title = "Penny — Expense Tracker";
   const description = "Track everyday spending, understand your habits, and export clear expense reports.";
   return { title, description, icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" }, openGraph: { title, description, images: [{ url: image, width: 1731, height: 909, alt: "Penny — Your money, made clear." }] }, twitter: { card: "summary_large_image", title, description, images: [image] } };
-}
+})();
 
 export default function RootLayout({
   children,
