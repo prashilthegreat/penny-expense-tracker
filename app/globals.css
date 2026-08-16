@@ -54,7 +54,7 @@ body,.sidebar,.metric-card,.panel,.secondary,.search,.modal,.toolbar select,.mod
 [data-theme="dark"] .purple{background:#302b40;color:#a995ee}
 [data-theme="dark"] .toast{background:#f0f1f5;color:#20242f}
 .month-picker{display:flex;align-items:center;gap:9px;width:max-content;margin-top:16px;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px}
-.month-picker input{height:36px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);padding:0 10px;font:700 13px Arial;outline:0;cursor:pointer}
-.month-picker input:focus{border-color:#ff9670;box-shadow:0 0 0 3px #ff693312}
-[data-theme="dark"] .month-picker input{background:#282d39;color:#f0f1f5;border-color:#3b4250}
+.month-picker select{height:36px;min-width:155px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);padding:0 30px 0 10px;font:700 13px Arial;outline:0;cursor:pointer}
+.month-picker select:focus{border-color:#ff9670;box-shadow:0 0 0 3px #ff693312}
+[data-theme="dark"] .month-picker select{background:#282d39;color:#f0f1f5;border-color:#3b4250}
 @media(max-width:620px){.topbar{flex-direction:column}.header-actions{justify-content:flex-start}.month-picker{margin-top:13px}}

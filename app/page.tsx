@@ -65,6 +65,7 @@ function parseImportedAmount(raw: string) {
   const amount = Number(value.replace(/[^\d.,]/g, "").replace(/,/g, ""));
   return negative ? -amount : amount;
 }
+function formatMonthOption(month: string) { return new Date(`${month}-01T12:00:00`).toLocaleDateString("en-AU", { month: "long", year: "numeric" }); }
 
 export default function Home() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -83,7 +84,10 @@ export default function Home() {
   async function loadExpenses() {
     const saved = localStorage.getItem("penny-expenses");
     if (saved) {
-      try { setExpenses(JSON.parse(saved)); } catch { localStorage.removeItem("penny-expenses"); }
+      try {
+        const normalised = (JSON.parse(saved) as Expense[]).map(expense => ({ ...expense, expenseDate: parseImportedDate(expense.expenseDate) || expense.expenseDate }));
+        setExpenses(normalised); localStorage.setItem("penny-expenses", JSON.stringify(normalised));
+      } catch { localStorage.removeItem("penny-expenses"); }
     }
     setLoading(false);
   }
@@ -97,6 +101,8 @@ export default function Home() {
     const next = !darkMode; setDarkMode(next); document.documentElement.dataset.theme = next ? "dark" : "light"; localStorage.setItem("penny-theme", next ? "dark" : "light");
   }
 
+  const now = new Date(); const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const availableMonths = useMemo(() => [...new Set([currentMonth, selectedMonth, ...expenses.map(expense => expense.expenseDate.slice(0, 7)).filter(month => /^\d{4}-\d{2}$/.test(month))])].sort((a, b) => b.localeCompare(a)), [currentMonth, expenses, selectedMonth]);
   const filtered = useMemo(() => expenses
     .filter(e => e.expenseDate.startsWith(selectedMonth) && (filter === "All categories" || e.category === filter) && `${e.merchant} ${e.note ?? ""}`.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.id - a.id), [expenses, filter, search, selectedMonth]);
@@ -104,7 +110,7 @@ export default function Home() {
   const pagedExpenses = filtered.slice((expensePage - 1) * 5, expensePage * 5);
   useEffect(() => { setExpensePage(1); }, [search, filter, selectedMonth]);
   useEffect(() => { setExpensePage(page => Math.min(page, expensePageCount)); }, [expensePageCount]);
-  const now = new Date(); const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; const monthExpenses = expenses.filter(e => e.expenseDate.startsWith(selectedMonth));
+  const monthExpenses = expenses.filter(e => e.expenseDate.startsWith(selectedMonth));
   const [selectedYear, selectedMonthNumber] = selectedMonth.split("-").map(Number); const daysInMonth = new Date(selectedYear, selectedMonthNumber, 0).getDate(); const periodDays = selectedMonth === currentMonth ? now.getDate() : daysInMonth;
   const totalCents = monthExpenses.reduce((sum, e) => sum + Math.round(e.amount * 100), 0); const total = totalCents / 100; const dailyAverage = total / Math.max(periodDays, 1);
   const categoryCents = monthExpenses.reduce<Record<string, number>>((all, e) => ({ ...all, [e.category]: (all[e.category] || 0) + Math.round(e.amount * 100) }), {});
@@ -200,11 +206,11 @@ export default function Home() {
     closeScan(); setToast(`${created.length} expense${created.length === 1 ? "" : "s"} imported`); setTimeout(() => setToast(""), 3000); setSaving(false);
   }
 
-  const monthLabel = new Date(`${selectedMonth}-01T12:00:00`).toLocaleDateString("en-AU", { month: "long", year: "numeric" });
+  const monthLabel = formatMonthOption(selectedMonth);
   return <main className="app-shell">
     <aside className="sidebar"><a className="brand" href="#top"><span className="brand-mark">P</span><span>Penny</span></a><nav aria-label="Main navigation"><a className="nav-item active" href="#top"><span>⌂</span> Overview</a><a className="nav-item" href="#expenses"><span>↕</span> Transactions</a><a className="nav-item" href="#insights"><span>◔</span> Insights</a></nav><div className="sidebar-bottom"><div className="storage-note"><span>✓</span><div><strong>Saved privately</strong><small>Your expenses stay in this browser.</small></div></div></div></aside>
     <section className="content" id="top">
-      <header className="topbar"><div className="topbar-heading"><p className="eyebrow">OVERVIEW</p><h1>Your money, made clear.</h1><p className="subtitle">Here’s where your money went this month.</p><label className="month-picker"><span>Viewing</span><input type="month" aria-label="Select expense month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)}/></label></div><div className="header-actions"><button className="secondary theme-toggle" type="button" aria-label={`Switch to ${darkMode ? "light" : "dark"} mode`} aria-pressed={darkMode} title={`Switch to ${darkMode ? "light" : "dark"} mode`} onClick={toggleTheme}>{darkMode ? <Sun size={17}/> : <Moon size={17}/>}</button><button className="secondary scan-button" onClick={() => setScanOpen(true)}>▣ <span>Scan screenshots</span></button><input ref={reportInput} className="report-input" type="file" accept=".csv,.txt,text/csv,text/plain" onChange={importReport}/><button className="secondary" onClick={() => reportInput.current?.click()}>⇧ <span>Import CSV</span></button><button className="secondary" onClick={exportReport}>⇩ <span>Export report</span></button><button className="primary" onClick={() => setModal(true)}>＋ <span>Add expense</span></button></div></header>
+      <header className="topbar"><div className="topbar-heading"><p className="eyebrow">OVERVIEW</p><h1>Your money, made clear.</h1><p className="subtitle">Here’s where your money went this month.</p><label className="month-picker"><span>Viewing</span><select aria-label="Select expense month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)}>{availableMonths.map(month => <option key={month} value={month}>{formatMonthOption(month)}</option>)}</select></label></div><div className="header-actions"><button className="secondary theme-toggle" type="button" aria-label={`Switch to ${darkMode ? "light" : "dark"} mode`} aria-pressed={darkMode} title={`Switch to ${darkMode ? "light" : "dark"} mode`} onClick={toggleTheme}>{darkMode ? <Sun size={17}/> : <Moon size={17}/>}</button><button className="secondary scan-button" onClick={() => setScanOpen(true)}>▣ <span>Scan screenshots</span></button><input ref={reportInput} className="report-input" type="file" accept=".csv,.txt,text/csv,text/plain" onChange={importReport}/><button className="secondary" onClick={() => reportInput.current?.click()}>⇧ <span>Import CSV</span></button><button className="secondary" onClick={exportReport}>⇩ <span>Export report</span></button><button className="primary" onClick={() => setModal(true)}>＋ <span>Add expense</span></button></div></header>
       <div className="metric-grid"><article className="metric-card hero-card"><p>Total spent <span className="info">i</span></p><div className="metric-row"><strong>{money.format(total)}</strong></div><small>Across {monthExpenses.length} expense{monthExpenses.length === 1 ? "" : "s"} in {monthLabel}</small><div className="sparkline" aria-hidden="true">{[16, 21, 14, 29, 24, 37, 30, 34, 25, 22, 17, 12].map((h, i) => <i key={i} style={{ height: `${h}px` }}/>)}</div></article><article className="metric-card"><div className="card-icon orange">↗</div><p>Daily average</p><strong>{money.format(dailyAverage)}</strong><small>Across {periodDays} day{periodDays === 1 ? "" : "s"} in {monthLabel}</small></article><article className="metric-card"><div className="card-icon purple">◎</div><p>Top category</p><strong>{topCategory}</strong><small>{totals[0] ? `${money.format(totals[0][1])} · ${total ? ((totals[0][1] / total) * 100).toFixed(0) : 0}% of spend` : "Add an expense to see insights"}</small></article></div>
       <div className="toolbar" id="expenses"><div className="search"><span>⌕</span><input aria-label="Search expenses" placeholder="Search expenses" value={search} onChange={e => setSearch(e.target.value)}/></div><select aria-label="Filter by category" value={filter} onChange={e => setFilter(e.target.value)}><option value="All categories">◉ All categories</option>{categories.map(c => <option key={c} value={c}>{categoryMeta[c].symbol} {c}</option>)}</select></div>
       <div className="main-grid"><section className="panel recent"><div className="panel-head"><div><h2>Expenses</h2><p>{filtered.length} record{filtered.length === 1 ? "" : "s"}</p></div><button className="text-button" onClick={() => setModal(true)}>Add new →</button></div><div className="expense-list">{loading ? <div className="empty"><div className="spinner"/>Loading expenses…</div> : filtered.length ? pagedExpenses.map(e => {
