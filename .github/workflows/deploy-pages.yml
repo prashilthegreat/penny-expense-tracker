@@ -26,6 +26,10 @@ jobs:
       - uses: actions/configure-pages@v5
       - run: npm ci
       - run: npm run build
+      - name: Prepare project-page assets
+        run: |
+          mv dist/client/penny-expense-tracker/_next dist/client/_next
+          rmdir dist/client/penny-expense-tracker
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist/client
