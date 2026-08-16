@@ -35,7 +35,7 @@ export default function Home() {
     }
     setLoading(false);
   }
-  useEffect(() => { loadExpenses(); navigator.serviceWorker?.register("/sw.js").catch(() => undefined); }, []);
+  useEffect(() => { loadExpenses(); navigator.serviceWorker?.register("/penny-expense-tracker/sw.js").catch(() => undefined); }, []);
 
   const filtered = useMemo(() => expenses.filter(e => (filter === "All categories" || e.category === filter) && `${e.merchant} ${e.note ?? ""}`.toLowerCase().includes(search.toLowerCase())), [expenses, filter, search]);
   const monthKey = new Date().toISOString().slice(0, 7); const monthExpenses = expenses.filter(e => e.expenseDate.startsWith(monthKey));
