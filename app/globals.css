@@ -18,3 +18,11 @@
 .pie-total strong{font-size:18px}
 .pie-total small{font-size:11px}
 .pagination button,.pagination span{font-size:12px}
+.transaction-edit-fields{display:grid;grid-template-columns:minmax(110px,1fr) 150px;gap:8px;align-items:center}
+.category-edit{height:30px;min-width:0;border:1px solid #ff9670;border-radius:7px;background:#fff;padding:0 8px;font:12px Arial;color:var(--ink);outline:0;box-shadow:0 0 0 3px #ff693312}
+.save-edit,.cancel-edit{width:26px;height:26px;border-radius:7px;background:transparent;font-size:15px}
+.save-edit{color:var(--green)}
+.save-edit:hover{background:#eff8f4}
+.cancel-edit{color:#9ca0a8}
+.cancel-edit:hover{background:#fff0ec;color:#e7583e}
+@media(max-width:620px){.transaction-edit-fields{grid-template-columns:1fr}.expense-row.is-editing{align-items:start}.expense-row.is-editing .expense-icon,.expense-row.is-editing .amount,.expense-row.is-editing .row-actions{margin-top:3px}}
