@@ -29,7 +29,7 @@ function isoDate(value: string) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function categoryFor(merchant: string) {
+export function categoryFor(merchant: string) {
   const value = merchant.toLowerCase();
   if (/cafe|coffee|restaurant|mcdonald|kfc|ubereats|doordash|bakery|bar\b|grill|pizza/.test(value)) return "Food & dining";
   if (/woolworth|coles|aldi|iga\b|supermarket|grocer|market/.test(value)) return "Groceries";

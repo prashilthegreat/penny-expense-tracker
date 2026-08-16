@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CarFront, CircleEllipsis, Clapperboard, Coffee, HeartPulse, Moon, Plane, ReceiptText, ShoppingBag, ShoppingCart, Sun, type LucideIcon } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { parseBankText } from "../lib/bank-ocr";
+import { categoryFor, parseBankText } from "../lib/bank-ocr";
 
 type Expense = { id: number; merchant: string; category: string; amount: number; expenseDate: string; note: string | null };
 type ScannedExpense = Omit<Expense, "id"> & { confidence: number; selected: boolean; duplicate: boolean };
@@ -22,12 +22,14 @@ function friendlyDate(date: string) {
 }
 
 function parseCsv(text: string) {
+  const sample = text.split(/\r?\n/).find(line => line.trim()) ?? "";
+  const delimiter = [",", ";", "\t"].sort((a, b) => sample.split(b).length - sample.split(a).length)[0];
   const rows: string[][] = []; let row: string[] = []; let value = ""; let quoted = false;
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
     if (char === '"' && quoted && text[index + 1] === '"') { value += '"'; index++; }
     else if (char === '"') quoted = !quoted;
-    else if (char === "," && !quoted) { row.push(value); value = ""; }
+    else if (char === delimiter && !quoted) { row.push(value); value = ""; }
     else if ((char === "\n" || char === "\r") && !quoted) {
       if (char === "\r" && text[index + 1] === "\n") index++;
       row.push(value); if (row.some(cell => cell.trim())) rows.push(row); row = []; value = "";
@@ -35,6 +37,33 @@ function parseCsv(text: string) {
   }
   row.push(value); if (row.some(cell => cell.trim())) rows.push(row);
   return rows;
+}
+
+const headerAliases = {
+  date: ["date", "transaction date", "posted date", "processing date", "processed date", "value date"],
+  merchant: ["merchant", "description", "transaction description", "payee", "details", "narrative", "particulars"],
+  amount: ["amount", "transaction amount", "amount aud", "value"],
+  debit: ["debit", "debit amount", "withdrawal", "withdrawals", "money out"],
+  credit: ["credit", "credit amount", "deposit", "money in"],
+  category: ["category", "transaction category", "type"],
+  note: ["note", "notes", "memo", "reference"],
+};
+function cleanHeader(value: string) { return value.replace(/^\uFEFF/, "").toLowerCase().replace(/[_()-]/g, " ").replace(/\s+/g, " ").trim(); }
+function findColumn(headers: string[], aliases: string[]) { return headers.findIndex(header => aliases.includes(header)); }
+function parseImportedDate(raw: string) {
+  const value = raw.trim();
+  const iso = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  const australian = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})/);
+  if (australian) { const year = australian[3].length === 2 ? `20${australian[3]}` : australian[3]; return `${year}-${australian[2].padStart(2, "0")}-${australian[1].padStart(2, "0")}`; }
+  const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+}
+function parseImportedAmount(raw: string) {
+  const value = raw.trim(); if (!value) return NaN;
+  const negative = /^\(.*\)$/.test(value) || value.includes("-");
+  const amount = Number(value.replace(/[^\d.,]/g, "").replace(/,/g, ""));
+  return negative ? -amount : amount;
 }
 
 export default function Home() {
@@ -107,21 +136,36 @@ export default function Home() {
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     try {
       const rows = parseCsv(await file.text());
-      const headerIndex = rows.findIndex(row => row.map(cell => cell.trim().toLowerCase()).join("|") === "date|merchant|category|amount (aud)|note");
-      if (headerIndex < 0) throw new Error();
-      const parsed = rows.slice(headerIndex + 1).flatMap((row, index) => {
-        const expenseDate = row[0]?.trim(); const merchant = row[1]?.trim(); const amount = Number(row[3]?.replace(/[$,\s]/g, ""));
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(expenseDate) || !merchant || !Number.isFinite(amount) || amount <= 0) return [];
-        const category = categories.includes(row[2]?.trim()) ? row[2].trim() : "Other";
-        return [{ id: Date.now() + index, expenseDate, merchant, category, amount, note: row[4]?.trim() || null } satisfies Expense];
+      let headerIndex = rows.slice(0, 20).findIndex(row => {
+        const headers = row.map(cleanHeader);
+        return findColumn(headers, headerAliases.date) >= 0 && findColumn(headers, headerAliases.merchant) >= 0 && (findColumn(headers, headerAliases.amount) >= 0 || findColumn(headers, headerAliases.debit) >= 0);
+      });
+      const isHeaderlessBankExport = headerIndex < 0 && rows[0]?.length >= 3 && !!parseImportedDate(rows[0][0] ?? "") && Number.isFinite(parseImportedAmount(rows[0][1] ?? ""));
+      if (headerIndex < 0 && !isHeaderlessBankExport) throw new Error();
+      const headers = headerIndex >= 0 ? rows[headerIndex].map(cleanHeader) : [];
+      const dateColumn = isHeaderlessBankExport ? 0 : findColumn(headers, headerAliases.date);
+      const merchantColumn = isHeaderlessBankExport ? 2 : findColumn(headers, headerAliases.merchant);
+      const debitColumn = isHeaderlessBankExport ? -1 : findColumn(headers, headerAliases.debit);
+      const amountColumn = isHeaderlessBankExport ? 1 : findColumn(headers, headerAliases.amount);
+      const categoryColumn = isHeaderlessBankExport ? -1 : findColumn(headers, headerAliases.category);
+      const noteColumn = isHeaderlessBankExport ? -1 : findColumn(headers, headerAliases.note);
+      const dataRows = rows.slice(isHeaderlessBankExport ? 0 : headerIndex + 1);
+      const hasSignedExpenses = amountColumn >= 0 && dataRows.some(row => parseImportedAmount(row[amountColumn] ?? "") < 0);
+      const parsed = dataRows.flatMap((row, index) => {
+        const expenseDate = parseImportedDate(row[dateColumn] ?? ""); const merchant = row[merchantColumn]?.trim();
+        const rawAmount = parseImportedAmount(row[debitColumn >= 0 ? debitColumn : amountColumn] ?? "");
+        if (!expenseDate || !merchant || !Number.isFinite(rawAmount) || rawAmount === 0 || (debitColumn < 0 && hasSignedExpenses && rawAmount > 0)) return [];
+        const amount = Math.round(Math.abs(rawAmount) * 100) / 100;
+        const suppliedCategory = row[categoryColumn]?.trim(); const matchedCategory = categories.find(category => category.toLowerCase() === suppliedCategory?.toLowerCase());
+        return [{ id: Date.now() + index, expenseDate, merchant, category: matchedCategory || categoryFor(merchant), amount, note: row[noteColumn]?.trim() || null } satisfies Expense];
       });
       if (!parsed.length) throw new Error();
       let skipped = 0; const signatures = new Set(expenses.map(item => `${item.expenseDate}|${item.merchant.toLowerCase()}|${item.amount.toFixed(2)}`));
       const imported = parsed.filter(item => { const key = `${item.expenseDate}|${item.merchant.toLowerCase()}|${item.amount.toFixed(2)}`; if (signatures.has(key)) { skipped++; return false; } signatures.add(key); return true; });
       const added = imported.length; const next = [...imported, ...expenses].sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.id - a.id);
       localStorage.setItem("penny-expenses", JSON.stringify(next)); setExpenses(next);
-      setToast(added ? `${added} expense${added === 1 ? "" : "s"} restored${skipped ? ` · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}` : `Nothing new to import · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped`);
-    } catch { setToast("That doesn’t look like a Penny expense report."); }
+      setToast(added ? `${added} expense${added === 1 ? "" : "s"} imported${skipped ? ` · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}` : `Nothing new to import · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped`);
+    } catch { setToast("Penny couldn’t find usable expense rows in that CSV."); }
     setTimeout(() => setToast(""), 4500);
   }
 
@@ -158,7 +202,7 @@ export default function Home() {
   return <main className="app-shell">
     <aside className="sidebar"><a className="brand" href="#top"><span className="brand-mark">P</span><span>Penny</span></a><nav aria-label="Main navigation"><a className="nav-item active" href="#top"><span>⌂</span> Overview</a><a className="nav-item" href="#expenses"><span>↕</span> Transactions</a><a className="nav-item" href="#insights"><span>◔</span> Insights</a></nav><div className="sidebar-bottom"><div className="storage-note"><span>✓</span><div><strong>Saved privately</strong><small>Your expenses stay in this browser.</small></div></div></div></aside>
     <section className="content" id="top">
-      <header className="topbar"><div><p className="eyebrow">OVERVIEW</p><h1>Your money, made clear.</h1><p className="subtitle">Here’s where your money went this month.</p></div><div className="header-actions"><button className="secondary theme-toggle" type="button" aria-label={`Switch to ${darkMode ? "light" : "dark"} mode`} aria-pressed={darkMode} title={`Switch to ${darkMode ? "light" : "dark"} mode`} onClick={toggleTheme}>{darkMode ? <Sun size={17}/> : <Moon size={17}/>}</button><button className="secondary scan-button" onClick={() => setScanOpen(true)}>▣ <span>Scan screenshots</span></button><input ref={reportInput} className="report-input" type="file" accept=".csv,text/csv" onChange={importReport}/><button className="secondary" onClick={() => reportInput.current?.click()}>⇧ <span>Import report</span></button><button className="secondary" onClick={exportReport}>⇩ <span>Export report</span></button><button className="primary" onClick={() => setModal(true)}>＋ <span>Add expense</span></button></div></header>
+      <header className="topbar"><div><p className="eyebrow">OVERVIEW</p><h1>Your money, made clear.</h1><p className="subtitle">Here’s where your money went this month.</p></div><div className="header-actions"><button className="secondary theme-toggle" type="button" aria-label={`Switch to ${darkMode ? "light" : "dark"} mode`} aria-pressed={darkMode} title={`Switch to ${darkMode ? "light" : "dark"} mode`} onClick={toggleTheme}>{darkMode ? <Sun size={17}/> : <Moon size={17}/>}</button><button className="secondary scan-button" onClick={() => setScanOpen(true)}>▣ <span>Scan screenshots</span></button><input ref={reportInput} className="report-input" type="file" accept=".csv,.txt,text/csv,text/plain" onChange={importReport}/><button className="secondary" onClick={() => reportInput.current?.click()}>⇧ <span>Import CSV</span></button><button className="secondary" onClick={exportReport}>⇩ <span>Export report</span></button><button className="primary" onClick={() => setModal(true)}>＋ <span>Add expense</span></button></div></header>
       <div className="metric-grid"><article className="metric-card hero-card"><p>Total spent <span className="info">i</span></p><div className="metric-row"><strong>{money.format(total)}</strong></div><small>Across {monthExpenses.length} expense{monthExpenses.length === 1 ? "" : "s"} in {monthLabel}</small><div className="sparkline" aria-hidden="true">{[16, 21, 14, 29, 24, 37, 30, 34, 25, 22, 17, 12].map((h, i) => <i key={i} style={{ height: `${h}px` }}/>)}</div></article><article className="metric-card"><div className="card-icon orange">↗</div><p>Daily average</p><strong>{money.format(dailyAverage)}</strong><small>{new Date().getDate()} days into {monthLabel}</small></article><article className="metric-card"><div className="card-icon purple">◎</div><p>Top category</p><strong>{topCategory}</strong><small>{totals[0] ? `${money.format(totals[0][1])} · ${total ? ((totals[0][1] / total) * 100).toFixed(0) : 0}% of spend` : "Add an expense to see insights"}</small></article></div>
       <div className="toolbar" id="expenses"><div className="search"><span>⌕</span><input aria-label="Search expenses" placeholder="Search expenses" value={search} onChange={e => setSearch(e.target.value)}/></div><select aria-label="Filter by category" value={filter} onChange={e => setFilter(e.target.value)}><option value="All categories">◉ All categories</option>{categories.map(c => <option key={c} value={c}>{categoryMeta[c].symbol} {c}</option>)}</select></div>
       <div className="main-grid"><section className="panel recent"><div className="panel-head"><div><h2>Expenses</h2><p>{filtered.length} record{filtered.length === 1 ? "" : "s"}</p></div><button className="text-button" onClick={() => setModal(true)}>Add new →</button></div><div className="expense-list">{loading ? <div className="empty"><div className="spinner"/>Loading expenses…</div> : filtered.length ? pagedExpenses.map(e => {
