@@ -15,9 +15,11 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "lucide-react": "^1.31.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-loading-skeleton": "3.5.0",
+    "recharts": "^3.10.1",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
