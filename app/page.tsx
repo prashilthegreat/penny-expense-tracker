@@ -67,14 +67,17 @@ export default function Home() {
     const next = !darkMode; setDarkMode(next); document.documentElement.dataset.theme = next ? "dark" : "light"; localStorage.setItem("penny-theme", next ? "dark" : "light");
   }
 
-  const filtered = useMemo(() => expenses.filter(e => (filter === "All categories" || e.category === filter) && `${e.merchant} ${e.note ?? ""}`.toLowerCase().includes(search.toLowerCase())), [expenses, filter, search]);
+  const filtered = useMemo(() => expenses
+    .filter(e => (filter === "All categories" || e.category === filter) && `${e.merchant} ${e.note ?? ""}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.id - a.id), [expenses, filter, search]);
   const expensePageCount = Math.max(1, Math.ceil(filtered.length / 5));
   const pagedExpenses = filtered.slice((expensePage - 1) * 5, expensePage * 5);
   useEffect(() => { setExpensePage(1); }, [search, filter]);
   useEffect(() => { setExpensePage(page => Math.min(page, expensePageCount)); }, [expensePageCount]);
-  const monthKey = new Date().toISOString().slice(0, 7); const monthExpenses = expenses.filter(e => e.expenseDate.startsWith(monthKey));
-  const total = monthExpenses.reduce((sum, e) => sum + e.amount, 0); const dailyAverage = total / Math.max(new Date().getDate(), 1);
-  const totals = Object.entries(monthExpenses.reduce<Record<string, number>>((all, e) => ({ ...all, [e.category]: (all[e.category] || 0) + e.amount }), {})).sort((a, b) => b[1] - a[1]);
+  const now = new Date(); const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; const monthExpenses = expenses.filter(e => e.expenseDate.startsWith(monthKey));
+  const totalCents = monthExpenses.reduce((sum, e) => sum + Math.round(e.amount * 100), 0); const total = totalCents / 100; const dailyAverage = total / Math.max(now.getDate(), 1);
+  const categoryCents = monthExpenses.reduce<Record<string, number>>((all, e) => ({ ...all, [e.category]: (all[e.category] || 0) + Math.round(e.amount * 100) }), {});
+  const totals = Object.entries(categoryCents).map(([category, cents]) => [category, cents / 100] as [string, number]).sort((a, b) => b[1] - a[1]);
   const topCategory = totals[0]?.[0] ?? "No expenses yet";
 
   async function addExpense(event: FormEvent) {
