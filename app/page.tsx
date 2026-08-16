@@ -12,6 +12,7 @@ const categoryMeta: Record<string, { Icon: LucideIcon; symbol: string; color: st
   "Food & dining": { Icon: Coffee, symbol: "☕", color: "#F97316" }, Groceries: { Icon: ShoppingCart, symbol: "🛒", color: "#22C55E" }, Transport: { Icon: CarFront, symbol: "🚙", color: "#3B82F6" }, Shopping: { Icon: ShoppingBag, symbol: "🛍", color: "#A855F7" }, "Bills & utilities": { Icon: ReceiptText, symbol: "🧾", color: "#EAB308" }, Health: { Icon: HeartPulse, symbol: "♡", color: "#EF4444" }, Entertainment: { Icon: Clapperboard, symbol: "🎬", color: "#EC4899" }, Travel: { Icon: Plane, symbol: "✈", color: "#06B6D4" }, Other: { Icon: CircleEllipsis, symbol: "•••", color: "#64748B" },
 };
 const money = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" });
+const buggyCsvImportCutoff = Date.parse("2026-08-16T00:00:00+09:30");
 
 function friendlyDate(date: string) {
   const value = new Date(`${date}T12:00:00`); const now = new Date();
@@ -50,12 +51,16 @@ const headerAliases = {
 };
 function cleanHeader(value: string) { return value.replace(/^\uFEFF/, "").toLowerCase().replace(/[_()-]/g, " ").replace(/\s+/g, " ").trim(); }
 function findColumn(headers: string[], aliases: string[]) { return headers.findIndex(header => aliases.includes(header)); }
+function validImportedDate(year: number, month: number, day: number) {
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+}
 function parseImportedDate(raw: string) {
   const value = raw.trim();
   const iso = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
-  const australian = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})/);
-  if (australian) { const year = australian[3].length === 2 ? `20${australian[3]}` : australian[3]; return `${year}-${australian[2].padStart(2, "0")}-${australian[1].padStart(2, "0")}`; }
+  if (iso) return validImportedDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const australian = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?:\D|$)/);
+  if (australian) { const year = Number(australian[3].length === 2 ? `20${australian[3]}` : australian[3]); return validImportedDate(year, Number(australian[2]), Number(australian[1])); }
   const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) return "";
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
 }
@@ -85,7 +90,11 @@ export default function Home() {
     const saved = localStorage.getItem("penny-expenses");
     if (saved) {
       try {
-        const normalised = (JSON.parse(saved) as Expense[]).map(expense => ({ ...expense, expenseDate: parseImportedDate(expense.expenseDate) || expense.expenseDate }));
+        const normalised = (JSON.parse(saved) as Expense[]).map(expense => {
+          let expenseDate = parseImportedDate(expense.expenseDate) || expense.expenseDate;
+          if (expenseDate.startsWith("2020-") && expense.id >= buggyCsvImportCutoff) expenseDate = `2026${expenseDate.slice(4)}`;
+          return { ...expense, expenseDate };
+        });
         setExpenses(normalised); localStorage.setItem("penny-expenses", JSON.stringify(normalised));
       } catch { localStorage.removeItem("penny-expenses"); }
     }
