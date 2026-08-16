@@ -1,2 +1,0 @@
-import type { MetadataRoute } from "next";
-export default function manifest(): MetadataRoute.Manifest { return { name: "Penny Expense Tracker", short_name: "Penny", description: "Track everyday spending and export clear expense reports.", start_url: "/", display: "standalone", background_color: "#f6f5f1", theme_color: "#ff6933", icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml" }] }; }
